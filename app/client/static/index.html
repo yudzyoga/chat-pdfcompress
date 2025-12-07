@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF CompressBot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body, html { height: 100%; }
+        .sidebar {
+            height: 100vh;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+        .chat-area {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .input-area {
+            border-top: 1px solid #ddd;
+            padding: 10px;
+        }
+        .sidebar-item {
+            cursor: pointer;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .sidebar-item:hover {
+            background-color: #f0f0f0;
+        }
+        .dark-mode {
+            background-color: #121212 !important;
+            color: #eaeaea !important;
+        }
+
+        .dark-mode .sidebar {
+            background-color: #1e1e1e !important;
+            border-color: #333 !important;
+        }
+
+        .dark-mode .messages {
+            background-color: #181818 !important;
+        }
+
+        .dark-mode .input-area {
+            background-color: #1e1e1e !important;
+            border-top: 1px solid #333 !important;
+        }
+
+        .dark-mode .sidebar-item:hover {
+            background-color: #2a2a2a !important;
+        }
+
+        .dark-mode .bg-white {
+            background-color: #2a2a2a !important;
+        }
+    
+        .job-name {
+            font-weight: 600;       /* bold-ish */
+            font-size: 0.95rem;
+            color: #fff;            /* or remove if you use light mode */
+        }
+    
+        .job-status {
+            font-size: 0.80rem;     /* smaller text */
+            color: #888;            /* dark gray */
+        }
+
+        .progress {
+            height: 6px;
+            background: #333;
+            border-radius: 4px;
+            margin-top: 6px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #0d6efd;  /* bootstrap blue, adjust if needed */
+            border-radius: 4px;
+        }
+        .job-card {
+            position: relative;
+            padding: 10px;
+            border-radius: 8px;
+            background: #1e1e1e;
+            margin-bottom: 10px;
+            overflow: visible;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            color: #aaa;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .delete-btn:hover {
+            color: #ff4c4c;
+        }
+
+    </style>
+
+
+</head>
+<body class="dark-mode">
+<div class="container-fluid h-100">
+    <div class="row h-100">
+        <!-- Chat Area -->
+        <div class="col-9 col-md-9 chat-area">
+            <div class="messages" id="messages">
+                <!-- Chat messages go here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-group">
+                    <input id="chat-input" type="text" class="form-control bg-dark text-light border-secondary" placeholder="Type your message...">
+                    <button class="btn btn-primary" id="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right-side sidebar -->
+        <div class="col-md-3" id="sidebar">
+            <h5 class="p-3">Jobs Progress</h5>
+            <div id="job-list" class="p-2">
+                <!-- Job cards will be dynamically inserted here -->
+            </div>
+        </div>
+
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<script>
+    
+document.addEventListener("DOMContentLoaded", () => {
+
+    document.getElementById('send-btn').onclick = async function() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        input.value = '';
+
+        const msgContainer = document.getElementById('messages');
+        const bubble = document.createElement('div');
+        bubble.className = 'p-2 my-2 bg-white rounded shadow-sm';
+        bubble.textContent = text;
+        msgContainer.appendChild(bubble);
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+
+        const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text })
+        });
+
+        const data = await res.json();
+
+        const replyBubble = document.createElement('div');
+        replyBubble.className = 'p-2 my-2 bg-primary text-white rounded shadow-sm';
+        replyBubble.textContent = data.reply.replace(/\n/g, "<br>");
+        replyBubble.innerHTML = marked.parse(data.reply);
+        msgContainer.appendChild(replyBubble);
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+
+    };
+
+    document.getElementById("chat-input").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            document.getElementById("send-btn").click();
+        }
+    });
+
+    function deleteJob(jobId) {
+         // Send API request to delete the file
+        fetch("/api/delete-job", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_id: jobId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log("Deleted job:", data.job_id);
+            const el = document.getElementById(`job-${jobId}`);
+            if (el) el.remove();  // ← removes the card from DOM
+        })
+        .catch(err => console.error("Failed to delete job:", err));
+    }
+
+    function updateJob(job) {
+        let el = document.getElementById(`job-${job.id}`);
+        if (!el) {
+            el = document.createElement("div");
+            el.id = `job-${job.id}`;
+            el.className = "job-card";
+
+            // create inner HTML without onclick
+            el.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="job-name">${job.data.filename}</div>
+                    <button class="delete-btn">✕</button>
+                </div>
+                <div class="job-status">${job.data.status}</div>
+                <div class="progress">
+                    <div class="progress-bar" style="width:${job.data.progress || 0}%"></div>
+                </div>
+            `;
+
+            document.getElementById("job-list").appendChild(el);
+
+            // attach click handler to the button AFTER it's in DOM
+            const btn = el.querySelector(".delete-btn");
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();   // ← prevents el.onclick from firing
+                deleteJob(job.id);
+            });
+        } else {
+            el.querySelector(".job-status").textContent = job.data.status;
+            el.querySelector(".progress-bar").style.width = job.data.progress + "%";
+        }
+
+        // update remove progress-bar if done
+        if(el){
+            if(job.data.status == "done"){
+                const status = `Ready for download!<br>File size: ${job.data.file_size}, compress ratio: ${job.data.compress}%`;
+                el.querySelector(".job-status").innerHTML = status;
+                el.querySelector(".progress").style.display = "none";
+
+                el.style.cursor = "pointer";
+
+                el.classList.add("clickable");
+                el.onclick = () => {
+                    //window.open(job.data.download_url, "_blank");
+                    window.open(`/download/${job.data.output_filename}`, "_blank");
+                };
+            }
+        }
+    }
+
+    const ws = new WebSocket("ws://127.0.0.1:8000/ws/updates");
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        data.updates.forEach(job => updateJob(job));
+    };
+
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

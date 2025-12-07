@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+requests
+
+# Google ADK + GenAI
+google-adk
+google-genai
